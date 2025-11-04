@@ -9,55 +9,46 @@ with open("input_writing.json", "r", encoding="utf-8") as f:
 with open("api_key.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-# Load the tone options
+# Load the prompt data
 with open("prompt.json", "r", encoding="utf-8") as f:
     prompt_data = json.load(f)
 
-# Show tone options to user
-print("Choose a tone:")
-for i, tone in enumerate(prompt_data["tone"], start=1):
-    print(f"{i}. {tone}")
-
-choice = int(input("Enter 1 or 2: ").strip())
-
-# Validate choice
-if choice < 1 or choice > len(prompt_data["tone"]):
-    raise ValueError("Invalid choice")
-
-selected_tone = prompt_data["tone"][choice - 1]
-print(f"Using tone: {selected_tone}")
+# Pair each character with its corresponding tone
+character_tone_pairs = list(zip(prompt_data["character"], prompt_data["tone"]))
 
 feedback = {}
 
 for key, text in writings.items():
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {data['api_key']}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "<YOUR_SITE_URL>",  # Optional
-            "X-Title": "<YOUR_SITE_NAME>",      # Optional
-        },
-        data=json.dumps({
-            "model": "tngtech/deepseek-r1t2-chimera:free",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Please provide feedback on this writing (be {selected_tone}): {text}"
-                }
-            ],
-        })
-    )
+    feedback[key] = {}
+    for character, tone in character_tone_pairs:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {data['api_key']}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "<YOUR_SITE_URL>",  # Optional
+                "X-Title": "<YOUR_SITE_NAME>",      # Optional
+            },
+            data=json.dumps({
+                "model": "tngtech/deepseek-r1t-chimera:free",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"You are {character}. Please provide feedback on this writing (be {tone}): {text}"
+                    }
+                ],
+            })
+        )
 
-    result = response.json()
+        result = response.json()
 
-    # Extract assistant reply safely
-    try:
-        reply = result["choices"][0]["message"]["content"]
-    except (KeyError, IndexError):
-        reply = "Error: no feedback returned."
+        # Extract assistant reply safely
+        try:
+            reply = result["choices"][0]["message"]["content"]
+        except (KeyError, IndexError):
+            reply = "Error: no feedback returned."
 
-    feedback[key] = reply
+        feedback[key][character.split(":")[0]] = reply  # Use character name as key
 
 # Save the feedback JSON
 with open("reponse_feedback.json", "w", encoding="utf-8") as f:

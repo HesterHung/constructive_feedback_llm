@@ -1,3 +1,13 @@
 {
-    "tone": ["harsh", "fair"]
+    "tone": [
+        "Wise, calm, reflective, and supportive",
+        "Playful, optimistic, imaginative, and nurturing",
+        "Provocative, confrontational, sharp, and intellectually demanding."
+    ],
+
+    "character": [
+        "Professor Owl: Offers wisdom and insights into research significance.",
+        "Creative Fairy: Encourages players to think outside the box, providing suggestions for innovative ideas",
+        "Critical Troll: Challenges players with tough questions, pushing them to clarify their arguments and address potential weaknesses."
+    ]
 }
