@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt Engineering Playground (with PDF)</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f4f9; }
+        .container { display: flex; width: 100%; }
+        .panel { flex: 1; padding: 15px; display: flex; flex-direction: column; overflow-y: auto; }
+        .panel:first-child { border-right: 2px solid #ddd; }
+        h2 { margin-top: 0; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        textarea { width: 98%; flex-grow: 1; font-family: monospace; font-size: 14px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        #system-prompt { height: 150px; flex-grow: 0; }
+        #user-prompt { height: 300px; }
+        #response { background-color: #e9e9ed; white-space: pre-wrap; word-wrap: break-word; }
+        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; align-items: center; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #aaa; }
+        select, input[type="file"] { padding: 8px; font-size: 14px; border-radius: 5px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Inputs</h2>
+            
+            <div class="controls">
+                <button id="run-button">Run Prompt</button>
+                <select id="model-select">
+                    <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1T Chimera (free)</option>
+                    <option value="deepseek/deepseek-v3.1:free">DeepSeek V3.1 (free)</options>
+                    <option value="deepseek/deepseek-r1-0528-qwen3-8b:free">DeepSeek R1 Qwen3 8B (free)</Goption>
+                    <option value="google/gemini-pro">Google Gemini Pro</option>
+                    <option value="openai/gpt-4o">OpenAI GPT-4o</option>
+                </select>
+                <input type="file" id="pdf-upload" accept=".pdf">
+            </div>
+
+            <h3>System Prompt</h3>
+            <textarea id="system-prompt" placeholder="You are a helpful assistant."></textarea>
+            
+            <h3>User Prompt</h3>
+            <textarea id="user-prompt" placeholder="Write your user prompt here (e.g., 'Summarize the attached PDF.')"></textarea>
+        </div>
+
+        <div class="panel">
+            <h2>Response</h2>
+            <textarea id="response" readonly placeholder="AI response will appear here..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        const runButton = document.getElementById('run-button');
+        const systemPromptEl = document.getElementById('system-prompt');
+        const userPromptEl = document.getElementById('user-prompt');
+        const modelSelectEl = document.getElementById('model-select');
+        const pdfUploadEl = document.getElementById('pdf-upload'); // Get the file input
+        const responseEl = document.getElementById('response');
+
+        const API_ENDPOINT = 'http://127.0.0.1:5000/run-prompt';
+
+        runButton.addEventListener('click', async () => {
+            const userPrompt = userPromptEl.value;
+            const pdfFile = pdfUploadEl.files[0]; // Get the first (and only) file
+
+            if (!userPrompt) {
+                alert('Please enter a User Prompt.');
+                return;
+            }
+
+            // Show loading state
+            responseEl.value = 'Calling API... Please wait.';
+            if (pdfFile) {
+                responseEl.value = 'Uploading PDF and calling API... This may take a moment.';
+            }
+            runButton.disabled = true;
+
+            // --- ALL JAVASCRIPT LOGIC IS UPDATED ---
+            
+            // 1. We must use FormData to send files
+            const formData = new FormData();
+            
+            // 2. Add all our form fields to it
+            formData.append('system_prompt', systemPromptEl.value);
+            formData.append('user_prompt', userPrompt);
+            formData.append('model', modelSelectEl.value);
+            
+            if (pdfFile) {
+                formData.append('pdf_file', pdfFile);
+            }
+
+            try {
+                // 3. Send the request using FormData
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    // DO NOT set 'Content-Type' header. 
+                    // The browser does it for you with FormData.
+                    body: formData 
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || `HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                responseEl.value = data.response;
+
+            } catch (error) {
+                responseEl.value = `Error: ${error.message}`;
+                console.error('Fetch error:', error);
+            } finally {
+                runButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
