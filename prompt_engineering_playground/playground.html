@@ -3,21 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prompt Engineering Playground (with PDF)</title>
+    <title>Chatbot Playground (with PDF)</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f4f9; }
         .container { display: flex; width: 100%; }
         .panel { flex: 1; padding: 15px; display: flex; flex-direction: column; overflow-y: auto; }
-        .panel:first-child { border-right: 2px solid #ddd; }
+        .panel:first-child { border-right: 2px solid #ddd; max-width: 350px; } /* Give controls a fixed width */
         h2 { margin-top: 0; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-        textarea { width: 98%; flex-grow: 1; font-family: monospace; font-size: 14px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        #system-prompt { height: 150px; flex-grow: 0; }
-        #user-prompt { height: 300px; }
-        #response { background-color: #e9e9ed; white-space: pre-wrap; word-wrap: break-word; }
-        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; align-items: center; }
-        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        h3 { margin-bottom: 5px; }
+        textarea { width: 98%; font-family: monospace; font-size: 14px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        #system-prompt { height: 100px; }
+        #new-message-prompt { height: 100px; margin-top: 15px; }
+        #chat-log { background-color: #ffffff; white-space: pre-wrap; word-wrap: break-word; flex-grow: 1; }
+        .controls { display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px; }
+        .controls-row { display: flex; gap: 10px; align-items: center; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 16px; flex-grow: 1; }
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #aaa; }
+        #new-chat-button { background-color: #dc3545; }
+        #new-chat-button:hover { background-color: #c82333; }
         select, input[type="file"] { padding: 8px; font-size: 14px; border-radius: 5px; border: 1px solid #ccc; }
     </style>
 </head>
@@ -25,10 +29,14 @@
 
     <div class="container">
         <div class="panel">
-            <h2>Inputs</h2>
+            <h2>Controls</h2>
             
             <div class="controls">
-                <button id="run-button">Run Prompt</button>
+                <div class="controls-row">
+                    <button id="send-button">Send</button>
+                    <button id="new-chat-button">New Chat</button>
+                </div>
+                
                 <select id="model-select">
                     <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1T Chimera (free)</option>
                     <option value="deepseek/deepseek-v3.1:free">DeepSeek V3.1 (free)</options>
@@ -36,56 +44,94 @@
                     <option value="google/gemini-pro">Google Gemini Pro</option>
                     <option value="openai/gpt-4o">OpenAI GPT-4o</option>
                 </select>
+                
                 <input type="file" id="pdf-upload" accept=".pdf">
             </div>
 
             <h3>System Prompt</h3>
-            <textarea id="system-prompt" placeholder="You are a helpful assistant."></textarea>
+            <textarea id="system-prompt" placeholder="You are a helpful assistant. (Applied at the start of a new chat)"></textarea>
             
-            <h3>User Prompt</h3>
-            <textarea id="user-prompt" placeholder="Write your user prompt here (e.g., 'Summarize the attached PDF.')"></textarea>
+            <h3>New Message</h3>
+            <textarea id="new-message-prompt" placeholder="Type your message here..."></textarea>
         </div>
 
         <div class="panel">
-            <h2>Response</h2>
-            <textarea id="response" readonly placeholder="AI response will appear here..."></textarea>
+            <h2>Chat Log</h2>
+            <textarea id="chat-log" readonly placeholder="Chat history will appear here..."></textarea>
         </div>
     </div>
 
     <script>
-        const runButton = document.getElementById('run-button');
+        // --- Element References ---
+        const sendButton = document.getElementById('send-button');
+        const newChatButton = document.getElementById('new-chat-button');
         const systemPromptEl = document.getElementById('system-prompt');
-        const userPromptEl = document.getElementById('user-prompt');
+        const userMessageEl = document.getElementById('new-message-prompt'); // Renamed
         const modelSelectEl = document.getElementById('model-select');
-        const pdfUploadEl = document.getElementById('pdf-upload'); // Get the file input
-        const responseEl = document.getElementById('response');
+        const pdfUploadEl = document.getElementById('pdf-upload');
+        const chatLogEl = document.getElementById('chat-log'); // Renamed
 
         const API_ENDPOINT = 'http://127.0.0.1:5000/run-prompt';
 
-        runButton.addEventListener('click', async () => {
-            const userPrompt = userPromptEl.value;
-            const pdfFile = pdfUploadEl.files[0]; // Get the first (and only) file
+        // --- Chat State ---
+        let currentMessages = [];
 
-            if (!userPrompt) {
-                alert('Please enter a User Prompt.');
+        // --- Helper Function to Render History ---
+        function renderChatLog() {
+            chatLogEl.value = ""; // Clear the log
+            for (const message of currentMessages) {
+                let role = message.role.toUpperCase();
+                
+                if (role === "ASSISTANT") {
+                    role = "AI";
+                } else if (role === "SYSTEM") {
+                    chatLogEl.value += `[${role}] ${message.content}\n`;
+                    continue; // Don't add extra newlines for system
+                }
+                chatLogEl.value += `\n--- [${role}] ---\n${message.content}\n`;
+            }
+            // Auto-scroll to bottom
+            chatLogEl.scrollTop = chatLogEl.scrollHeight;
+        }
+
+        // --- Event Listener for NEW CHAT Button ---
+        newChatButton.addEventListener('click', () => {
+            currentMessages = [];
+            chatLogEl.value = "New chat started.";
+            systemPromptEl.disabled = false;
+            userMessageEl.value = "";
+            pdfUploadEl.value = null; // Clear file input
+        });
+
+        // --- Event Listener for SEND Button ---
+        sendButton.addEventListener('click', async () => {
+            const newMessage = userMessageEl.value;
+            const pdfFile = pdfUploadEl.files[0];
+            const systemPrompt = systemPromptEl.value;
+
+            if (!newMessage) {
+                alert('Please enter a message.');
                 return;
             }
 
-            // Show loading state
-            responseEl.value = 'Calling API... Please wait.';
-            if (pdfFile) {
-                responseEl.value = 'Uploading PDF and calling API... This may take a moment.';
-            }
-            runButton.disabled = true;
+            // --- Disable UI ---
+            sendButton.disabled = true;
+            userMessageEl.disabled = true;
+            chatLogEl.value += "\n\n--- [AI] ---\nThinking...";
+            chatLogEl.scrollTop = chatLogEl.scrollHeight;
 
-            // --- ALL JAVASCRIPT LOGIC IS UPDATED ---
+            // --- Handle First Message (System Prompt) ---
+            if (currentMessages.length === 0 && systemPrompt) {
+                currentMessages.push({ role: "system", content: systemPrompt });
+                systemPromptEl.disabled = true; // Lock system prompt after chat starts
+            }
             
-            // 1. We must use FormData to send files
+            // --- 1. Use FormData to send files and data ---
             const formData = new FormData();
             
-            // 2. Add all our form fields to it
-            formData.append('system_prompt', systemPromptEl.value);
-            formData.append('user_prompt', userPrompt);
+            // --- 2. Add all our form fields ---
+            formData.append('messages', JSON.stringify(currentMessages)); // Send current history
+            formData.append('new_user_message', newMessage); // Send new message
             formData.append('model', modelSelectEl.value);
             
             if (pdfFile) {
@@ -93,11 +139,9 @@
             }
 
             try {
-                // 3. Send the request using FormData
+                // --- 3. Send the request ---
                 const response = await fetch(API_ENDPOINT, {
                     method: 'POST',
-                    // DO NOT set 'Content-Type' header. 
-                    // The browser does it for you with FormData.
                     body: formData 
                 });
 
@@ -106,14 +150,23 @@
                     throw new Error(err.error || `HTTP error! Status: ${response.status}`);
                 }
 
+                // --- 4. Get UPDATED history from backend ---
                 const data = await response.json();
-                responseEl.value = data.response;
+                currentMessages = data.messages; // ** CRITICAL: Resync state **
+
+                // --- 5. Re-render the entire chat log ---
+                renderChatLog();
 
             } catch (error) {
-                responseEl.value = `Error: ${error.message}`;
+                chatLogEl.value += `\n\n[ERROR] ${error.message}`;
                 console.error('Fetch error:', error);
             } finally {
-                runButton.disabled = false;
+                // --- Re-enable UI ---
+                sendButton.disabled = false;
+                userMessageEl.disabled = false;
+                userMessageEl.value = ""; // Clear the input box
+                pdfUploadEl.value = null; // Clear the file input
+                userMessageEl.focus();
             }
         });
     </script>
